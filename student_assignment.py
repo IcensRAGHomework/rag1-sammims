@@ -35,6 +35,6 @@ def demo(question):
                 {"type": "text", "text": question},
             ]
     )
-    response = llm.invoke([message])
+    response = llm.invoke([message]).content
     
     return response
