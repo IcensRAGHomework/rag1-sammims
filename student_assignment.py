@@ -14,6 +14,11 @@ from langchain_core.tools import tool
 import requests
 from langchain.agents import create_tool_calling_agent, AgentExecutor, Tool
 
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+
 
 
 gpt_chat_version = 'gpt-4o'
@@ -97,6 +102,7 @@ X        {{
         }}
         The language of the output result is same as the input.
     """
+
     messages = [
         SystemMessage(content = [{"type": "text", "text": system_prompt_str},]),
         HumanMessage(content = [{"type": "text", "text": question},]),
@@ -121,15 +127,16 @@ def generate_hw02(question):
             ]
         }}
     """
+
     # the prompt is from https://smith.langchain.com/hub/hwchase17/openai-functions-agent
     # prompt = hub.pull("hwchase17/openai-functions-agent")
     # print(prompt.messages)
     agent_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt_str),
-            ("placeholder", "{chat_history}"),
+            ("placeholder", "{chat_history}"), # MessagesPlaceholder("chat_history", optional=True),
             ("human", "{input}"),
-            ("placeholder", "{agent_scratchpad}"),
+            ("placeholder", "{agent_scratchpad}"), # MessagesPlaceholder("agent_scratchpad"),
         ]
     )
 
@@ -150,13 +157,92 @@ def generate_hw02(question):
     agent = create_tool_calling_agent(model, tools, agent_prompt)
     agent_executor = AgentExecutor(agent = agent, tools = tools)
     response = agent_executor.invoke({"input": question})
-
     result = response["output"].strip().removeprefix("```json").removesuffix("```")
     return result
     
-    
 def generate_hw03(question2, question3):
-    pass
+    system_prompt_str = """
+        You are the assistant to provide holiday relevant query through the tool `get_holidays`.
+        For the query result, please porvide dates and names info in exactly structured JSON format as follows.
+        The language of the output result is same as the input.
+        {{
+            "Result": [
+                {{
+                    "date": "2024-12-25",
+                    "name": "Christmas"
+                }}
+            ]
+        }}
+
+        If the question is like "Is the given holiday in the list?",
+        you should check the date AND name in the query result list to check if the holiday exists.
+        It's one new holiday if either of date and same name is different.
+        For the new holiday, please hint user in exactly structured JSON format as follows.
+        The language of the output result is same as the input.
+        {{
+            "Result": {{
+                "add": true/false,
+                "reason": "Describe why you do or do not want to add a new holiday, 
+                        specify whether the holiday already exists in the list, 
+                        and shows all the contents of the current list for reference."
+            }}
+        }}
+    """
+
+    # the prompt is from https://smith.langchain.com/hub/hwchase17/openai-functions-agent
+    # prompt = hub.pull("hwchase17/openai-functions-agent")
+    # print(prompt.messages)
+    agent_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system_prompt_str),
+            ("placeholder", "{chat_history}"), # MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{input}"),
+            ("placeholder", "{agent_scratchpad}"), # MessagesPlaceholder("agent_scratchpad"),
+        ]
+    )
+
+    # https://python.langchain.com/api_reference/core/tools/langchain_core.tools.convert.tool.html
+    tools = [
+        Tool(
+            name = get_holidays.name,
+            func = get_holidays,
+            description = get_holidays.description,
+            parameters = [
+                ("country", str),
+                ("year", int),
+            ]
+        )
+    ]
+
+    model = get_model()
+    agent = create_tool_calling_agent(model, tools, agent_prompt)
+    agent_executor = AgentExecutor(agent = agent, tools = tools)
+
+    # Create chat history
+    histories = {}
+    def get_history(session_id: str) -> BaseChatMessageHistory:
+        if session_id not in histories:
+            histories[session_id] = ChatMessageHistory()
+        return histories[session_id]
+
+    agent_with_chat_history = RunnableWithMessageHistory(
+        agent_executor,
+        get_history,
+        input_messages_key = "input",
+        history_messages_key = "chat_history",
+    )
+
+    session_id = "query_holiday"
+    agent_with_chat_history.invoke(
+        {"input": question2},
+        config = {"configurable": {"session_id": session_id}},
+    )
+    response = agent_with_chat_history.invoke(
+        {"input": question3},
+        config = {"configurable": {"session_id": session_id}},
+    )
+    result = response["output"].strip().removeprefix("```json").removesuffix("```")
+    return result
     
 def generate_hw04(question):
     pass
@@ -181,8 +267,14 @@ def demo(question):
 
 # print(demo("hello, 請使用繁體中文").content)
 
-print("=== hw01 output ===")
-print(generate_hw01("2024年台灣10月紀念日有哪些?"))
+# print("=== hw01 output ===")
+# print(generate_hw01("2024年台灣10月紀念日有哪些?"))
 
-print("=== hw02 output ===")
-print(generate_hw02("2024年台灣10月紀念日有哪些?"))
+# print("=== hw02 output ===")
+# print(generate_hw02("2024年台灣10月紀念日有哪些?"))
+
+print("=== hw03 output ===")
+print(generate_hw03('2024年台灣10月紀念日有哪些?', '根據先前的節日清單，這個節日{"date": "10-31", "name": "蔣公誕辰紀念日"}是否有在該月份清單？'))
+
+# print("=== hw04 output ===")
+#print(generate_hw04('請問中華台北的積分是多少'))
