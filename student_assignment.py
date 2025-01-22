@@ -1,7 +1,6 @@
 import json
 import traceback
 
-
 from model_configurations import get_model_configuration
 
 from langchain_openai import AzureChatOpenAI
@@ -19,6 +18,7 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 
+import base64
 
 
 gpt_chat_version = 'gpt-4o'
@@ -245,7 +245,42 @@ def generate_hw03(question2, question3):
     return result
     
 def generate_hw04(question):
-    pass
+    def encode_to_image_url(image_path, image_type = "jpeg"):
+        try:
+            with open(image_path, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
+                return f"data:image/{image_type};base64,{encoded_string}"  # Correct MIME type
+        except FileNotFoundError:
+            print(f"Error: Image file not found at {image_path}")
+            return None
+
+    system_prompt_str = """
+        You are the assistant to query game score.
+        For the query result, please porvide score info in exactly structured JSON format as follows.
+        {{
+            "Result": {{
+                "score": 1234
+            }}
+        }}
+        The language of the output result is same as the input.
+    """
+    base64_image = encode_to_image_url("baseball.png")
+    messages = [
+        SystemMessage(content = [{"type": "text", "text": system_prompt_str},]),
+        HumanMessage(content = [
+            {"type": "text", "text": question},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": base64_image},
+                },
+            ],
+        ),
+    ]
+
+    model = get_model()
+    response = model.invoke(messages)
+    result = response.content.strip().removeprefix("```json").removesuffix("```")
+    return result
     
 def demo(question):
     llm = AzureChatOpenAI(
@@ -273,8 +308,8 @@ def demo(question):
 # print("=== hw02 output ===")
 # print(generate_hw02("2024年台灣10月紀念日有哪些?"))
 
-print("=== hw03 output ===")
-print(generate_hw03('2024年台灣10月紀念日有哪些?', '根據先前的節日清單，這個節日{"date": "10-31", "name": "蔣公誕辰紀念日"}是否有在該月份清單？'))
+# print("=== hw03 output ===")
+# print(generate_hw03('2024年台灣10月紀念日有哪些?', '根據先前的節日清單，這個節日{"date": "10-31", "name": "蔣公誕辰紀念日"}是否有在該月份清單？'))
 
-# print("=== hw04 output ===")
-#print(generate_hw04('請問中華台北的積分是多少'))
+print("=== hw04 output ===")
+print(generate_hw04('請問中華台北的積分是多少'))
